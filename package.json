@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@babel/core": "7.21.0",
+    "@connext/nxtp-contracts": "^0.2.1-rc.16",
+    "@connext/sdk": "^1.0.3-alpha.0",
     "@typescript-eslint/eslint-plugin": "5.54.0",
     "@typescript-eslint/parser": "5.54.0",
     "babel-eslint": "10.1.0",
