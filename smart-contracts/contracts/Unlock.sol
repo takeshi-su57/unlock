@@ -72,6 +72,15 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
     _;
   }
 
+  // modifier 
+  modifier onlyGov() {
+    require(isOwner(), "ONLY_OWNER");
+    if(unlockManager != address(0)) {
+      require(_msgSender() == unlockManager, "ONLY_MANAGER");
+    }
+    _;
+  }
+
   uint public grossNetworkProduct;
 
   uint public totalDiscountGranted;
@@ -117,6 +126,9 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
 
   // protocol fee
   uint public protocolFee;
+
+  // address 
+  address public unlockManager;
 
   // Events
   event NewLock(
@@ -164,7 +176,7 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
     // add a proxy admin on deployment
     _deployProxyAdmin();
   }
-  function initializeProxyAdmin() public onlyOwner {
+  function initializeProxyAdmin() public onlyGov {
     if(proxyAdminAddress != address(0)){revert Unlock__ALREADY_DEPLOYED();}
     _deployProxyAdmin();
   }
@@ -189,6 +201,16 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
   }
 
   /**
+   * Set the `UnlockManager` instance that is capable of performing admin tasks
+   * on Unlock
+   * @param _unlockManager address of the UnlockManager contract instance on
+   * current network 
+   */
+  function setUnlockManager(address _unlockManager) external {
+    unlockManager = _unlockManager;
+  }
+
+  /**
    * @dev Helper to get the address of a template based on its version number
    */
   function publicLockImpls(
@@ -205,7 +227,7 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
   function addLockTemplate(
     address impl,
     uint16 version
-  ) public onlyOwner {
+  ) public onlyGov {
     _publicLockVersions[impl] = version;
     _publicLockImpls[version] = impl;
     if (publicLockLatestVersion < version)
@@ -541,7 +563,7 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
    * Set the fee used by the protocol
    * @param _protocolFee fee in basic point
    */
-  function setProtocolFee(uint _protocolFee) external onlyOwner {
+  function setProtocolFee(uint _protocolFee) external onlyGov {
     protocolFee = _protocolFee;
   }
 
@@ -555,7 +577,7 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
     string calldata _symbol,
     string calldata _URI,
     uint _chainId
-  ) external onlyOwner {
+  ) external onlyGov {
     udt = _udt;
     weth = _weth;
     estimatedGasForPurchase = _estimatedGasForPurchase;
@@ -581,7 +603,7 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
    */
   function setLockTemplate(
     address _publicLockAddress
-  ) external onlyOwner {
+  ) external onlyGov {
     // First claim the template so that no-one else could
     // this will revert if the template was already initialized.
     IPublicLock(_publicLockAddress).initialize(
@@ -607,7 +629,7 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
   function setOracle(
     address _tokenAddress,
     address _oracleAddress
-  ) external onlyOwner {
+  ) external onlyGov {
     uniswapOracles[_tokenAddress] = IUniswapOracleV3(
       _oracleAddress
     );
@@ -623,7 +645,7 @@ contract Unlock is UnlockInitializable, UnlockOwnable {
   function resetTrackedValue(
     uint _grossNetworkProduct,
     uint _totalDiscountGranted
-  ) external onlyOwner {
+  ) external onlyGov {
     grossNetworkProduct = _grossNetworkProduct;
     totalDiscountGranted = _totalDiscountGranted;
 
