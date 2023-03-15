@@ -3705,7 +3705,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@connext/nxtp-contracts@npm:^0.2.1-rc.16":
+"@connext/nxtp-contracts@npm:0.2.1-rc.16":
   version: 0.2.1-rc.16
   resolution: "@connext/nxtp-contracts@npm:0.2.1-rc.16"
   dependencies:
@@ -3801,7 +3801,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@connext/sdk@npm:^1.0.3-alpha.0":
+"@connext/sdk@npm:1.0.3-alpha.0":
   version: 1.0.3-alpha.0
   resolution: "@connext/sdk@npm:1.0.3-alpha.0"
   dependencies:
@@ -16401,6 +16401,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@unlock-protocol/smart-contracts@workspace:smart-contracts"
   dependencies:
+    "@connext/nxtp-contracts": 0.2.1-rc.16
+    "@connext/sdk": 1.0.3-alpha.0
     "@gnosis.pm/safe-core-sdk": 3.2.0
     "@gnosis.pm/safe-ethers-lib": 1.7.0
     "@gnosis.pm/safe-service-client": 1.4.0
@@ -52969,8 +52971,6 @@ __metadata:
   resolution: "unlock@workspace:."
   dependencies:
     "@babel/core": 7.21.0
-    "@connext/nxtp-contracts": ^0.2.1-rc.16
-    "@connext/sdk": ^1.0.3-alpha.0
     "@typescript-eslint/eslint-plugin": 5.54.0
     "@typescript-eslint/parser": 5.54.0
     babel-eslint: 10.1.0
