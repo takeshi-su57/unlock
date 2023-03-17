@@ -332,4 +332,7 @@ interface IUnlock {
    * @dev The `msg.sender` will be the upgraded lock
    */
   function postLockUpgrade() external;
+
+
+  function _getAdmin() external view returns (address);
 }
