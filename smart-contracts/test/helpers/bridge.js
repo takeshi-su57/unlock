@@ -8,7 +8,8 @@ const {
   addSomeETH,
 } = require('./fork')
 
-const SRC_DOMAIN_ID = 1735353714;
+// default to mainnet
+const SRC_DOMAIN_ID = 6648936; 
 
 async function deployBridge(srcDomainId = SRC_DOMAIN_ID) {
   const [unlockOwner, ] = await ethers.getSigners();

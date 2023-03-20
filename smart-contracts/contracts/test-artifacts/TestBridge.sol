@@ -4,6 +4,8 @@ import {IXReceiver} from "@connext/nxtp-contracts/contracts/core/connext/interfa
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../interfaces/IWETH.sol";
 
+import 'hardhat/console.sol';
+
 contract TestBridge {
 
   IWETH wethSrc;
@@ -45,6 +47,8 @@ contract TestBridge {
   ) external payable returns (bytes32 transferId) {
     transferId = bytes32(block.timestamp);
 
+    address bridgedAsset;
+
     // wrap native assets
     if (_asset == address(wethSrc)) {
       // get assets from src
@@ -55,7 +59,9 @@ contract TestBridge {
       wethDest.deposit{value: _amount}();
       bool success = wethDest.transfer(_to, _amount);
       require(success, "wrapping token failed");
-    } else {
+
+      bridgedAsset = address(wethDest);
+    } else if(_asset != address(0)) {
       // get asset from the src lock
       IERC20(srcToken).transferFrom(msg.sender, address(this), _amount);
 
@@ -67,13 +73,22 @@ contract TestBridge {
 
       // SWAP using a (fake) bridged token
       IERC20(destToken).transfer(_to, _amount);
+
+     bridgedAsset = address(destToken);
+    } else {
+      bridgedAsset = address(0);
     }
 
-    // cross the bridge
+    console.log(_to);
+    console.log(_amount);
+    console.log(bridgedAsset);
+    console.log(msg.sender);
+    console.log(srcDomainId);
+    
     IXReceiver(_to).xReceive(
       transferId,
       _amount, // amount of token in wei
-      _asset == address(wethSrc) ? address(wethDest) : address(destToken), // native or bridged ERC20 token
+      bridgedAsset , // native or bridged ERC20 token
       msg.sender, // sender on the origin chain
       srcDomainId, // domain ID of the origin chain
       _callData
