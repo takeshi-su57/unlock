@@ -78,12 +78,6 @@ contract TestBridge {
     } else {
       bridgedAsset = address(0);
     }
-
-    console.log(_to);
-    console.log(_amount);
-    console.log(bridgedAsset);
-    console.log(msg.sender);
-    console.log(srcDomainId);
     
     IXReceiver(_to).xReceive(
       transferId,
