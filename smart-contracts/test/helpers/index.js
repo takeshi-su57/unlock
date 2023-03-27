@@ -16,6 +16,7 @@ const fork = require('./fork')
 const roles = require('./roles')
 const upgrades = require('./upgrades')
 const bridge = require('./bridge')
+const versions = require('./versions')
 
 module.exports = {
   deployContracts,
@@ -36,4 +37,5 @@ module.exports = {
   ...roles,
   ...upgrades,
   ...bridge,
+  ...versions,
 }
