@@ -1,5 +1,11 @@
-import { Button, Input, ToggleSwitch, Toggle } from '@unlock-protocol/ui'
-import { useForm, Controller } from 'react-hook-form'
+import {
+  Button,
+  Input,
+  ToggleSwitch,
+  Toggle,
+  AddressInput,
+} from '@unlock-protocol/ui'
+import { useForm, Controller, useWatch } from 'react-hook-form'
 import { getAddressForName } from '~/hooks/useEns'
 import { AirdropMember } from './AirdropElements'
 import { useList } from 'react-use'
@@ -13,14 +19,21 @@ import { KeyManager } from '@unlock-protocol/unlock-js'
 import { useConfig } from '~/utils/withConfig'
 import { twMerge } from 'tailwind-merge'
 import { useWeb3Service } from '~/utils/withWeb3Service'
+import { onResolveName } from '~/utils/resolvers'
 export interface Props {
   add(member: AirdropMember): void
   lock: Lock
   list: AirdropMember[]
   defaultValues?: Partial<AirdropMember>
+  emailRequired?: boolean
 }
 
-export function AirdropForm({ add, defaultValues, lock }: Props) {
+export function AirdropForm({
+  add,
+  defaultValues,
+  lock,
+  emailRequired = false,
+}: Props) {
   const config = useConfig()
   const [useEmail, setUseEmail] = useState(false)
   const {
@@ -32,17 +45,21 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
     control,
     formState: { errors, isSubmitting },
   } = useForm<AirdropMember>({
+    // @ts-expect-error
     defaultValues,
     mode: 'onSubmit',
   })
 
   const formValues = watch()
+  const { wallet } = useWatch({
+    control,
+  })
 
   const addressFieldChanged = (name: keyof AirdropMember) => {
     return async (event: React.ChangeEvent<HTMLInputElement>) => {
       const address = await getAddressForName(event.target.value)
       if (address) {
-        return setValue(name, address, {
+        return setValue(name as string, address, {
           shouldValidate: true,
           shouldDirty: true,
         })
@@ -50,13 +67,13 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
     }
   }
 
-  const required = useEmail ? 'Email is required' : 'Wallet Address is required'
-  const label = useEmail ? 'Email' : 'Wallet'
+  const required = useEmail ? 'Email is required' : 'Wallet address is required'
+  const label = useEmail ? 'Email' : 'Wallet address'
 
   const description = useEmail
     ? 'Enter the email address that will receive the membership NFT'
     : 'Enter the wallet address or an ENS that will receive the membership NFT'
-  const error = errors?.recipient?.message
+  const error = errors?.wallet?.message
   const placeholder = useEmail ? 'user@email.com' : '0x...'
   const inputClass = twMerge(
     'box-border flex-1 block w-full transition-all border pl-4 py-2 text-base border-gray-400 rounded-lg shadow-sm hover:border-gray-500 focus:ring-gray-500 focus:border-gray-500 focus:outline-none disabled:bg-gray-100',
@@ -68,9 +85,9 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
   const web3Service = useWeb3Service()
   const networkConfig = config.networks[lock.network]
 
-  const onRecipientChange = useCallback(
+  const onWalletChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
-      const recipient = event.target.value
+      const value = event.target.value
       if (useEmail && networkConfig.keyManagerAddress) {
         const keyManager = new KeyManager(config.networks)
         const address = keyManager.createTransferAddress({
@@ -79,40 +96,41 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
             lockAddress: lock!.address,
           },
         })
-        setValue('email', recipient)
+        setValue('email', value)
         setValue('manager', networkConfig.keyManagerAddress)
         return address
       }
-      return recipient
+      return value
     },
     [setValue, useEmail, lock, config.networks, networkConfig]
   )
 
   const onSubmitHandler = useCallback(
     async (member: AirdropMember) => {
-      const address = await getAddressForName(member.recipient)
-      member.recipient = address
+      const address = await getAddressForName(member.wallet)
+      member.wallet = address
       const parsed = AirdropMember.parse(member)
       add(parsed)
       reset()
+      setValue('wallet', '')
     },
-    [add, reset]
+    [add, reset, setValue]
   )
 
   return (
     <form onSubmit={handleSubmit(onSubmitHandler)} className="grid gap-6">
       <Controller
-        name="recipient"
+        name="wallet"
         control={control}
         rules={{
           required,
           validate: {
-            max_keys: async (value) => {
-              if (!value) {
+            max_keys: async (address: string) => {
+              if (!address) {
                 return true
               }
+
               try {
-                const address = await getAddressForName(value)
                 const numberOfMemberships = await web3Service.balanceOf(
                   lock!.address,
                   address,
@@ -123,7 +141,7 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
                   : 'Address already holds the maximum number of memberships.'
               } catch (error) {
                 console.error(error)
-                return 'There is a problem with using this address. Try another.'
+                return '' // error already handle by the component
               }
             },
           },
@@ -139,24 +157,48 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
                   <div className="text-base">No wallet address?</div>
                   <Toggle
                     value={useEmail}
-                    onChange={(value) => {
+                    onChange={(value: boolean) => {
                       setUseEmail(value)
                     }}
                   />
                 </div>
               </div>
-              <input
-                className={inputClass}
-                placeholder={placeholder}
-                name={label}
-                id={label}
-                type={useEmail ? 'email' : 'text'}
-                onChange={(event) => {
-                  onChange(onRecipientChange(event))
-                }}
-                ref={ref}
-                onBlur={onBlur}
-              />
+              {useEmail ? (
+                <input
+                  className={inputClass}
+                  placeholder={placeholder}
+                  name={label}
+                  id={label}
+                  type="email"
+                  onChange={(event) => {
+                    onChange(onWalletChange(event))
+                  }}
+                  ref={ref}
+                  onBlur={onBlur}
+                />
+              ) : (
+                <Controller
+                  name="wallet"
+                  control={control}
+                  rules={{
+                    required: true,
+                  }}
+                  render={() => {
+                    return (
+                      <>
+                        <AddressInput
+                          withIcon
+                          value={wallet}
+                          onChange={(value: any) => {
+                            setValue('wallet', value)
+                          }}
+                          onResolveName={onResolveName}
+                        />
+                      </>
+                    )
+                  }}
+                />
+              )}
               {description && !error && (
                 <p className="text-sm text-gray-600"> {description} </p>
               )}
@@ -171,7 +213,7 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
           label="Email Address"
           {...register('email', {
             required: {
-              value: useEmail,
+              value: useEmail || emailRequired,
               message: 'Email is required',
             },
           })}
@@ -205,7 +247,7 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
           <ToggleSwitch
             enabled={formValues.neverExpire}
             setEnabled={() => setValue('neverExpire', !formValues.neverExpire)}
-            onChange={(enabled) => {
+            onChange={(enabled: boolean) => {
               if (enabled) {
                 setValue('expiration', undefined)
               }
@@ -248,9 +290,14 @@ export function AirdropForm({ add, defaultValues, lock }: Props) {
 interface AirdropManualFormProps {
   lock: Lock
   onConfirm(members: AirdropMember[]): void | Promise<void>
+  emailRequired?: boolean
 }
 
-export function AirdropManualForm({ onConfirm, lock }: AirdropManualFormProps) {
+export function AirdropManualForm({
+  onConfirm,
+  lock,
+  emailRequired = false,
+}: AirdropManualFormProps) {
   const [list, { push, removeAt, clear }] = useList<AirdropMember>([])
   const { account } = useAuth()
   const expiration = formatDate(lock.expirationDuration || 0)
@@ -259,6 +306,7 @@ export function AirdropManualForm({ onConfirm, lock }: AirdropManualFormProps) {
   return (
     <div className="space-y-6 overflow-y-auto">
       <AirdropForm
+        emailRequired={emailRequired}
         lock={lock}
         add={(member) => push(member)}
         list={list}
@@ -286,7 +334,7 @@ export function AirdropManualForm({ onConfirm, lock }: AirdropManualFormProps) {
           <Button
             loading={isConfirming}
             disabled={isConfirming}
-            onClick={async (event) => {
+            onClick={async (event: any) => {
               event.preventDefault()
               setIsConfirming(true)
               try {

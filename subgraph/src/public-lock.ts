@@ -1,4 +1,11 @@
-import { Address, BigInt, log, Bytes, ethereum } from '@graphprotocol/graph-ts'
+import {
+  Address,
+  BigInt,
+  log,
+  Bytes,
+  ethereum,
+  store,
+} from '@graphprotocol/graph-ts'
 import {
   CancelKey as CancelKeyEvent,
   ExpirationChanged as ExpirationChangedUntilV11Event,
@@ -23,6 +30,7 @@ import {
   genKeyID,
   getKeyExpirationTimestampFor,
   loadOrCreateUnlockDailyData,
+  getKeyManagerOf,
   LOCK_MANAGER,
 } from './helpers'
 
@@ -32,6 +40,7 @@ function newKey(event: TransferEvent): void {
   key.lock = event.address.toHexString()
   key.tokenId = event.params.tokenId
   key.owner = event.params.to
+  key.createdAt = event.block.timestamp
   key.createdAtBlock = event.block.number
   key.cancelled = false
 
@@ -41,6 +50,12 @@ function newKey(event: TransferEvent): void {
     key.tokenURI = tokenURI.value
   }
   key.expiration = getKeyExpirationTimestampFor(
+    event.address,
+    event.params.tokenId,
+    event.params.to
+  )
+
+  key.manager = getKeyManagerOf(
     event.address,
     event.params.tokenId,
     event.params.to
@@ -121,6 +136,14 @@ export function handleTransfer(event: TransferEvent): void {
       lock.totalKeys = lock.totalKeys.minus(BigInt.fromI32(1))
       lock.save()
     }
+
+    // delete record of burned key
+    const keyID = genKeyID(event.address, event.params.tokenId.toString())
+    const key = Key.load(keyID)
+    if (key) {
+      store.remove('Key', keyID)
+    }
+
     createReceipt(event)
   } else {
     // existing key has been transferred
@@ -242,9 +265,9 @@ export function handleKeyExtended(event: KeyExtendedEvent): void {
     key.expiration = event.params.newTimestamp
     key.cancelled = false
     key.save()
+    // create receipt
+    createReceipt(event)
   }
-  // create receipt
-  createReceipt(event)
 }
 
 // from < v10 (before using tokenId accross the board)
@@ -358,11 +381,18 @@ export function handleLockMetadata(event: LockMetadataEvent): void {
     const baseTokenURI = lockContract.try_tokenURI(BigInt.fromI32(0))
 
     // update only if baseTokenURI has changed
+    // Unfortunately, this does not scale well.
+    // For now we cap at 100 keys.
+    // On large collections this times out which then breaks indexing on the subgraph.
+    // Relevant links:
+    // - discord message: https://discord.com/channels/438038660412342282/438070183794573313/1082786404691628112
+    // - github issue: https://github.com/graphprotocol/graph-node/issues/3576
+    const keysToMigrate = Math.min(100, totalKeys.toI32())
     if (
       !baseTokenURI.reverted &&
       baseTokenURI.value !== event.params.baseTokenURI
     ) {
-      for (let i = 0; i < totalKeys.toI32(); i++) {
+      for (let i = 0; i < keysToMigrate; i++) {
         const keyID = genKeyID(event.address, `${i + 1}`)
         const key = Key.load(keyID)
         if (key) {
@@ -438,5 +468,13 @@ export function createReceipt(event: ethereum.Event): void {
   receipt.sender = event.transaction.from.toHexString()
   receipt.tokenAddress = tokenAddress.toHexString()
   receipt.gasTotal = BigInt.fromString(totalGas.toString())
+
+  if (lock) {
+    const newReceiptNumber = lock.numberOfReceipts.plus(BigInt.fromI32(1))
+    lock.numberOfReceipts = newReceiptNumber
+    receipt.numberOfReceipt = newReceiptNumber
+    lock.save()
+  }
+
   receipt.save()
 }

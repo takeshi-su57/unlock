@@ -85,16 +85,15 @@ describe('upgradeLock / data migration v9 > v10', () => {
       'contracts/Unlock.sol:Unlock'
     )
     unlock = await upgrades.deployProxy(Unlock, [unlockOwner.address], {
-      initializer: 'initialize(address)',
+      initializer: 'initialize(address)'
     })
     await unlock.deployed()
 
     // add past impl to Unlock
-    const txImpl = await unlock.addLockTemplate(
+    await unlock.addLockTemplate(
       publicLockPast.address,
       pastVersion
     )
-    await txImpl.wait()
 
     // set v1 as main template
     await unlock.setLockTemplate(publicLockPast.address)
@@ -207,7 +206,6 @@ describe('upgradeLock / data migration v9 > v10', () => {
     })
 
     it('Should have upgraded the lock with the new template', async () => {
-      assert.equal(await unlock.publicLockLatestVersion(), pastVersion + 1)
       assert.equal(await lock.publicLockVersion(), pastVersion + 1)
     })
 

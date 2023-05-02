@@ -3,8 +3,6 @@ import { Tab } from '@headlessui/react'
 import { AirdropManualForm } from './AirdropManualForm'
 import { AirdropBulkForm } from './AirdropBulkForm'
 import { AirdropMember } from './AirdropElements'
-import { useStorageService } from '~/utils/withStorageService'
-import { useWalletService } from '~/utils/withWalletService'
 import { useAuth } from '~/contexts/AuthenticationContext'
 import { MAX_UINT } from '~/constants'
 import { formatDate } from '~/utils/lock'
@@ -13,6 +11,7 @@ import customParseFormat from 'dayjs/plugin/customParseFormat'
 import { ToastHelper } from '~/components/helpers/toast.helper'
 import { omit } from 'lodash'
 import { useLockData } from '~/hooks/useLockData'
+import { useUpdateUsersMetadata } from '~/hooks/useUserMetadata'
 
 dayjs.extend(customParseFormat)
 
@@ -23,17 +22,16 @@ export interface Props {
   network: number
   isOpen: boolean
   setIsOpen(value: boolean): void
+  emailRequired?: boolean
 }
 
-export function AirdropKeysDrawer({
+export const AirdropForm = ({
   lockAddress,
   network,
-  isOpen,
-  setIsOpen,
-}: Props) {
-  const storageService = useStorageService()
-  const walletService = useWalletService()
-  const { account } = useAuth()
+  emailRequired,
+}: Pick<Props, 'lockAddress' | 'network' | 'emailRequired'>) => {
+  const { account, getWalletService } = useAuth()
+  const { mutateAsync: updateUsersMetadata } = useUpdateUsersMetadata()
 
   const { lock: lockData, isLockLoading: isLockDataLoading } = useLockData({
     lockAddress,
@@ -42,7 +40,7 @@ export function AirdropKeysDrawer({
 
   const handleConfirm = async (items: AirdropMember[]) => {
     // Create metadata
-    const users = items.map(({ recipient: userAddress, ...rest }) => {
+    const users = items.map(({ wallet: userAddress, ...rest }) => {
       const data = omit(rest, [
         'manager',
         'neverExpire',
@@ -56,8 +54,10 @@ export function AirdropKeysDrawer({
           const [name, designation] = key.split('.')
 
           if (designation !== 'public') {
+            // @ts-expect-error
             result.protected[name] = value
           } else {
+            // @ts-expect-error
             result.public[name] = value
           }
 
@@ -73,13 +73,14 @@ export function AirdropKeysDrawer({
         userAddress,
         lockAddress,
         metadata,
+        network,
       } as const
 
       return user
     })
 
     // Save metadata for users
-    await storageService.submitMetadata(users, network)
+    await updateUsersMetadata(users)
 
     const initialValue: Record<
       'recipients' | 'keyManagers' | 'expirations',
@@ -104,7 +105,7 @@ export function AirdropKeysDrawer({
       }
 
       for (const _ of Array.from({ length: item.count })) {
-        prop.recipients.push(item.recipient)
+        prop.recipients.push(item.wallet)
         prop.expirations.push(expiration!)
         prop.keyManagers.push(item.manager || account!)
       }
@@ -112,6 +113,7 @@ export function AirdropKeysDrawer({
       return prop
     }, initialValue)
 
+    const walletService = await getWalletService(network)
     // Grant keys
     await walletService
       .grantKeys(
@@ -137,40 +139,61 @@ export function AirdropKeysDrawer({
   }
 
   return (
+    <div className="mt-2 space-y-6">
+      {isLockDataLoading ? (
+        <Placeholder.Root>
+          {Array.from({ length: 8 }).map((_, index) => (
+            <Placeholder.Line key={index} />
+          ))}
+        </Placeholder.Root>
+      ) : (
+        <Tab.Group defaultIndex={0}>
+          <Tab.List className="flex gap-6 p-2 border-b border-gray-400">
+            {['Manual', 'Bulk'].map((text) => (
+              <Tab
+                key={text}
+                className={({ selected }) => {
+                  return `font-medium ${
+                    selected ? 'text-brand-ui-primary' : ''
+                  }`
+                }}
+              >
+                {text}
+              </Tab>
+            ))}
+          </Tab.List>
+          <Tab.Panels className="mt-6">
+            <Tab.Panel>
+              <AirdropManualForm
+                emailRequired={emailRequired}
+                lock={lockData!}
+                onConfirm={handleConfirm}
+              />
+            </Tab.Panel>
+            <Tab.Panel>
+              <AirdropBulkForm
+                lock={lockData!}
+                onConfirm={handleConfirm}
+                emailRequired={emailRequired}
+              />
+            </Tab.Panel>
+          </Tab.Panels>
+        </Tab.Group>
+      )}
+    </div>
+  )
+}
+
+export function AirdropKeysDrawer({
+  lockAddress,
+  network,
+  isOpen,
+  setIsOpen,
+}: Props) {
+  return (
     <Drawer isOpen={isOpen} setIsOpen={setIsOpen} title="Airdrop Keys">
       <div className="mt-2 space-y-6">
-        {isLockDataLoading ? (
-          <Placeholder.Root>
-            {Array.from({ length: 8 }).map((_, index) => (
-              <Placeholder.Line key={index} />
-            ))}
-          </Placeholder.Root>
-        ) : (
-          <Tab.Group defaultIndex={0}>
-            <Tab.List className="flex gap-6 p-2 border-b border-gray-400">
-              {['Manual', 'Bulk'].map((text) => (
-                <Tab
-                  key={text}
-                  className={({ selected }) => {
-                    return `font-medium ${
-                      selected ? 'text-brand-ui-primary' : ''
-                    }`
-                  }}
-                >
-                  {text}
-                </Tab>
-              ))}
-            </Tab.List>
-            <Tab.Panels className="mt-6">
-              <Tab.Panel>
-                <AirdropManualForm lock={lockData!} onConfirm={handleConfirm} />
-              </Tab.Panel>
-              <Tab.Panel>
-                <AirdropBulkForm lock={lockData!} onConfirm={handleConfirm} />
-              </Tab.Panel>
-            </Tab.Panels>
-          </Tab.Group>
-        )}
+        <AirdropForm lockAddress={lockAddress} network={network}></AirdropForm>
       </div>
     </Drawer>
   )

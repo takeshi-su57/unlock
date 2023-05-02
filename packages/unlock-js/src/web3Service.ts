@@ -8,7 +8,15 @@ import {
 } from './erc20'
 import { ETHERS_MAX_UINT } from './constants'
 import { TransactionOptions, WalletServiceCallback } from './types'
-
+import { passwordHookAbi } from './abis/passwordHookAbi'
+import {
+  CurrencyAmount,
+  NativeCurrency,
+  Percent,
+  Token,
+  TradeType,
+} from '@uniswap/sdk-core'
+import { AlphaRouter, SwapType } from '@uniswap/smart-order-router'
 /**
  * This service reads data from the RPC endpoint.
  * All transactions should be sent via the WalletService.
@@ -131,7 +139,7 @@ export default class Web3Service extends UnlockService {
     )
 
     const previousDeployAddresses = (networkConfig.previousDeploys || []).map(
-      (d) => ethers.utils.getAddress(d.unlockAddress)
+      (d: any) => ethers.utils.getAddress(d.unlockAddress)
     )
     const isPreviousUnlockContract = previousDeployAddresses.includes(
       lock.unlockContractAddress
@@ -916,5 +924,135 @@ export default class Web3Service extends UnlockService {
     // We need to remove the last part (ID) of the URI to get the base URI
     const baseTokenURI = tokenURI.substring(0, tokenURI.lastIndexOf('/') + 1)
     return baseTokenURI
+  }
+
+  /**
+   * Returns an object the contains the resolved address or ens
+   * name of the input address with it's type
+   */
+  async resolveName(addressOrEns: string) {
+    const provider = this.providerForNetwork(1)
+
+    try {
+      const address = addressOrEns.trim()
+      const isNotENS = ethers.utils.isAddress(address)
+
+      if (isNotENS) {
+        // address is already valid and not an ENS
+        return {
+          input: address,
+          address,
+          name: address,
+          type: 'address',
+        }
+      } else {
+        // Address is ENS, need to resolved it
+        const name = address
+        const resolvedName = await provider.resolveName(address)
+
+        if (resolvedName) {
+          return {
+            input: address,
+            name,
+            address: resolvedName,
+            type: 'name',
+          }
+        } else {
+          return {
+            input: address,
+            name,
+            address: resolvedName,
+            type: 'error',
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error(err)
+      return ''
+    }
+  }
+
+  /**
+   * Get signer for `Password hook contract`
+   */
+  async getPasswordHookSigners(params: {
+    lockAddress: string
+    contractAddress: string
+    network: number
+  }) {
+    const { lockAddress, contractAddress, network } = params ?? {}
+    const contract = await this.getHookContract({
+      network,
+      address: contractAddress,
+      abi: passwordHookAbi,
+    })
+    return contract.signers(lockAddress)
+  }
+
+  async getUniswapRoute({
+    params: { tokenOut, amountOut, recipient, tokenIn, network },
+  }: {
+    params: {
+      tokenIn: Token | NativeCurrency
+      tokenOut: Token | NativeCurrency
+      amountOut: string
+      recipient: string
+      network: number
+    }
+  }) {
+    const provider: any = this.providerForNetwork(network)
+    const networkConfig = this.networks[network]
+    const router = new AlphaRouter({
+      chainId: network,
+      provider,
+    })
+    const outputAmount = CurrencyAmount.fromRawAmount(tokenOut, amountOut)
+    const routeArgs = [
+      outputAmount,
+      tokenIn,
+      TradeType.EXACT_OUTPUT,
+      {
+        type: SwapType.UNIVERSAL_ROUTER,
+        recipient,
+        slippageTolerance: new Percent(15, 100),
+        deadline: Math.floor(new Date().getTime() / 1000 + 60 * 60), // 1 hour
+      },
+    ] as const
+    // call router
+    const swapResponse = await router.route(...routeArgs)
+
+    if (!swapResponse) {
+      throw new Error('No route found')
+    }
+
+    const {
+      methodParameters,
+      quote,
+      quoteGasAdjusted,
+      estimatedGasUsedUSD,
+      trade,
+    } = swapResponse
+    // parse quote as BigNumber
+    const amountInMax = utils.currencyAmountToBigNumber(quote)
+    const { calldata: swapCalldata, value, to: swapRouter } = methodParameters!
+    const ratio = 1 / Number(trade.executionPrice.toFixed(6))
+
+    const convertToQuoteToken = (value: string) => {
+      return Number(value) * ratio
+    }
+
+    return {
+      swapCalldata,
+      value,
+      amountInMax,
+      swapRouter:
+        // use hard coded router when available
+        networkConfig?.uniswapV3?.universalRouterAddress || swapRouter,
+      quote,
+      trade,
+      convertToQuoteToken,
+      quoteGasAdjusted,
+      estimatedGasUsedUSD,
+    }
   }
 }

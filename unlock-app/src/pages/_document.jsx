@@ -12,14 +12,14 @@ export default class MyDocument extends Document {
           <link
             rel="preconnect"
             href="https://fonts.gstatic.com"
-            crossOrigin="true"
+            crossOrigin=""
           />
           <link
             href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600;700&display=swap"
             rel="stylesheet"
           />
           <link rel="shortcut icon" href="/favicon.ico" />
-          {this.props.styleTags}
+          {this.props?.styleTags}
         </Head>
         <body>
           <Main />

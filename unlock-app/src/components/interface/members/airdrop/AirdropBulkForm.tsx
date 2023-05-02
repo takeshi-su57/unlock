@@ -1,4 +1,4 @@
-import { Button, minifyAddress } from '@unlock-protocol/ui'
+import { Button, Placeholder, minifyAddress } from '@unlock-protocol/ui'
 import { useList } from 'react-use'
 import { AirdropMember, AirdropListItem } from './AirdropElements'
 import { useDropzone } from 'react-dropzone'
@@ -18,9 +18,10 @@ const MAX_SIZE = 50
 interface Props {
   lock: Lock
   onConfirm(members: AirdropMember[]): void | Promise<void>
+  emailRequired?: boolean
 }
 
-export function AirdropBulkForm({ lock, onConfirm }: Props) {
+export function AirdropBulkForm({ lock, onConfirm, emailRequired }: Props) {
   const [list, { set, clear, removeAt }] = useList<AirdropMember>([])
   const [error, setError] = useState('')
   const config = useConfig()
@@ -51,39 +52,40 @@ export function AirdropBulkForm({ lock, onConfirm }: Props) {
 
       const linesWithError: number[] = []
       const duplicates: AirdropMember[] = []
+      const missingEmail: AirdropMember[] = []
 
       const members = await Promise.all(
         json.map(async (item, line) => {
           try {
-            if (!item.recipient && item.email) {
+            if (!item.wallet && item.email) {
               // If no recipient is provided but email is, we create a transfer address for walletless users
               const keyManager = new KeyManager(config.networks)
               const networkConfig = config.networks[lock.network]
-              const recipient = keyManager.createTransferAddress({
+              const wallet = keyManager.createTransferAddress({
                 params: {
                   lockAddress: lock.address,
                   email: item.email,
                 },
               })
               item.manager = networkConfig.keyManagerAddress
-              item.recipient = recipient
+              item.wallet = wallet
             }
             const record = AirdropMember.parse(item)
-            const [recipient, manager] = await Promise.all([
-              getAddressForName(record.recipient),
+            const [wallet, manager] = await Promise.all([
+              getAddressForName(record.wallet),
               getAddressForName(record.manager || account!),
             ])
 
             // Deduplicate by looking at existing keys
             const balance = await web3Service.totalKeys(
               lock.address,
-              recipient,
+              wallet,
               lock.network
             )
 
             return {
               ...record,
-              recipient,
+              wallet,
               manager,
               balance,
               line: line + 2,
@@ -105,9 +107,10 @@ export function AirdropBulkForm({ lock, onConfirm }: Props) {
 
           // find existing members
           const existingMembers = filtered.filter(
-            ({ recipient }) => recipient === member.recipient
+            ({ wallet }) => wallet === member.wallet
           )
 
+          const noEmail = !member?.email?.includes('@')
           const existingBalance = member.balance || 0
           const alreadyToBeAdded = existingMembers.reduce(
             (total, existingMember) => total + existingMember.count,
@@ -124,6 +127,11 @@ export function AirdropBulkForm({ lock, onConfirm }: Props) {
             return filtered
           }
 
+          if (noEmail && emailRequired) {
+            console.warn(`Email required and missing`, member)
+            missingEmail.push(member)
+            return filtered
+          }
           // push the item to array if new unique member found
           filtered.push(member)
           return filtered
@@ -146,9 +154,16 @@ export function AirdropBulkForm({ lock, onConfirm }: Props) {
         errors.push(
           `The following recipients are duplicates and have been discarded: ${duplicates
             .map(
-              (m) =>
-                `${minifyAddress(m.recipient)} - ${m.email} (line ${m.line})`
+              (m) => `${minifyAddress(m.wallet)} - ${m.email} (line ${m.line})`
             )
+            .join(', ')}`
+        )
+      }
+
+      if (missingEmail.length > 0) {
+        errors.push(
+          `The following recipients are missing a required email address and have been discarded: ${missingEmail
+            .map((m) => `${minifyAddress(m.wallet)} -  (line ${m.line})`)
             .join(', ')}`
         )
       }
@@ -169,10 +184,7 @@ export function AirdropBulkForm({ lock, onConfirm }: Props) {
           {isLoadingMembers && (
             <div className="space-y-6">
               {Array.from({ length: 8 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="w-full h-8 bg-gray-100 rounded-lg animate-pulse"
-                />
+                <Placeholder.Line size="md" key={index} />
               ))}
             </div>
           )}
@@ -188,6 +200,11 @@ export function AirdropBulkForm({ lock, onConfirm }: Props) {
                   {MAX_SIZE} NFT at once, but you can re-upload the same file
                   multiple times and the duplicates will automatically
                   discarded.
+                </p>
+                <p>
+                  If you don&apos;t have wallet address of the user, leave the
+                  field blank and fill out their email. We will airdrop the NFT
+                  to their email.
                 </p>
                 <div>
                   <a
@@ -208,7 +225,7 @@ export function AirdropBulkForm({ lock, onConfirm }: Props) {
                 <input {...getInputProps()} />
                 <div className="max-w-xs space-y-2 text-center">
                   <h3 className="text-lg font-medium">
-                    Drop your recipients file here
+                    Drop your CSV file here
                   </h3>
                   <p className="text-sm text-gray-600">
                     Download the template file and fill out the values in the

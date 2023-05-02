@@ -3,14 +3,14 @@ import { Button, Input, ToggleSwitch } from '@unlock-protocol/ui'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { ToastHelper } from '~/components/helpers/toast.helper'
-import { useWalletService } from '~/utils/withWalletService'
-import { useWeb3Service } from '~/utils/withWeb3Service'
+import { useTransferFee } from '~/hooks/useTransferFee'
 
 interface UpdateTransferFeeProps {
   lockAddress: string
   network: number
   isManager: boolean
   disabled: boolean
+  unlimitedDuration: boolean
 }
 
 interface FormProps {
@@ -22,9 +22,8 @@ export const UpdateTransferFee = ({
   network,
   isManager,
   disabled,
+  unlimitedDuration,
 }: UpdateTransferFeeProps) => {
-  const web3Service = useWeb3Service()
-  const walletService = useWalletService()
   const [allowTransfer, setAllowTransfer] = useState(false)
 
   const {
@@ -38,23 +37,18 @@ export const UpdateTransferFee = ({
     },
   })
 
-  const getTransferFeeBasisPoints = async () => {
-    return await web3Service.transferFeeBasisPoints(lockAddress, network)
-  }
-
-  const updateTransferFee = async (fields: FormProps) => {
-    await walletService.updateTransferFee({
-      lockAddress,
-      transferFeeBasisPoints: fields?.transferFeePercentage * 100,
-    })
-  }
+  const { updateTransferFee, getTransferFeeBasisPoints } = useTransferFee({
+    lockAddress,
+    network,
+  })
 
   const updateTransferFeeMutation = useMutation(updateTransferFee)
 
   const onSubmit = async (fields: FormProps) => {
     if (isValid) {
-      const updateTransferFeePromise =
-        updateTransferFeeMutation.mutateAsync(fields)
+      const updateTransferFeePromise = updateTransferFeeMutation.mutateAsync(
+        fields?.transferFeePercentage
+      )
 
       await ToastHelper.promise(updateTransferFeePromise, {
         loading: 'Updating transfer fee',
@@ -76,14 +70,13 @@ export const UpdateTransferFee = ({
     async () => getTransferFeeBasisPoints()
   )
 
+  const transferFeePercentage = (transferFeeBasisPoints ?? 0) / 100
+  const isTransferAllowed = transferFeePercentage < 100
+
   useEffect(() => {
-    setValue('transferFeePercentage', (transferFeeBasisPoints ?? 0) / 100)
-    if (transferFeeBasisPoints === undefined) {
-      setAllowTransfer(false)
-    } else {
-      setAllowTransfer(transferFeeBasisPoints < 100)
-    }
-  }, [transferFeeBasisPoints])
+    setValue('transferFeePercentage', transferFeePercentage)
+    setAllowTransfer(isTransferAllowed)
+  }, [isTransferAllowed, setValue, transferFeePercentage])
 
   const disabledInput =
     disabled || isLoading || updateTransferFeeMutation.isLoading
@@ -107,7 +100,7 @@ export const UpdateTransferFee = ({
         }
         disabled={disabledInput}
       />
-      {allowTransfer && (
+      {allowTransfer && !unlimitedDuration && (
         <>
           <Input
             label="Transfer fee (%)"

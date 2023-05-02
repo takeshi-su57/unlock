@@ -1,7 +1,7 @@
 import React, { ReactNode } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { RiCloseLine as CloseIcon } from 'react-icons/ri'
-interface Props {
+export interface Props {
   isOpen: boolean
   setIsOpen: (isOpen: boolean) => void
   children?: ReactNode
@@ -12,7 +12,7 @@ export function Modal({ isOpen, setIsOpen, children, empty }: Props) {
   let content
   if (empty) {
     content = (
-      <div className="min-h-screen min-w-full flex flex-col items-center justify-center overflow-auto">
+      <div className="flex flex-col items-center justify-center min-w-full min-h-screen overflow-auto">
         {children}
       </div>
     )

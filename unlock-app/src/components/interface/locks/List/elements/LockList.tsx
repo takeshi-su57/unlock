@@ -4,12 +4,12 @@ import { ToastHelper } from '~/components/helpers/toast.helper'
 import { Disclosure } from '@headlessui/react'
 import { Lock } from '~/unlockTypes'
 import { useConfig } from '~/utils/withConfig'
-import { LockCard, LocksByNetworkPlaceholder } from './LockCard'
+import { LockCard } from './LockCard'
 import {
   RiArrowDropUpLine as UpIcon,
   RiArrowDropDownLine as DownIcon,
 } from 'react-icons/ri'
-import { NetworkConfig } from '@unlock-protocol/types'
+import { Placeholder } from '@unlock-protocol/ui'
 
 interface LocksByNetworkProps {
   network: number
@@ -25,7 +25,19 @@ const LocksByNetwork = ({ network, isLoading, locks }: LocksByNetworkProps) => {
   const { networks } = useConfig()
   const { name: networkName } = networks[network]
 
-  if (isLoading) return <LocksByNetworkPlaceholder networkName={networkName} />
+  if (isLoading)
+    return (
+      <Placeholder.Root>
+        <h2 className="text-lg font-bold text-brand-ui-primary">
+          {networkName}
+        </h2>
+        <Placeholder.Root>
+          <Placeholder.Card />
+          <Placeholder.Card />
+          <Placeholder.Card />
+        </Placeholder.Root>
+      </Placeholder.Root>
+    )
   if (locks?.length === 0) return null
 
   return (
@@ -58,12 +70,18 @@ const LocksByNetwork = ({ network, isLoading, locks }: LocksByNetworkProps) => {
 }
 
 export const LockList = ({ owner }: LockListProps) => {
-  const { networks } = useConfig()
-
-  const networkItems: [string, NetworkConfig | unknown][] =
-    Object.entries(networks)
-      // ignore localhost
-      .filter(([network]) => network !== '31337') ?? []
+  const { networks, defaultNetwork } = useConfig()
+  const networkEntries = Object.entries(networks)
+  // Sort networks so that default and preferred networks are first.
+  const networkItems = [
+    ...networkEntries.filter(([network]) =>
+      [defaultNetwork.toString()].includes(network)
+    ),
+    ...networkEntries.filter(
+      ([network]) =>
+        network && !['31337', defaultNetwork.toString()].includes(network)
+    ),
+  ]
 
   const getLocksByNetwork = async ({ account: owner, network }: any) => {
     const service = new SubgraphService()
